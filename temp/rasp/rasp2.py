@@ -4,6 +4,7 @@ from picamera2 import Picamera2
 import time
 import json
 from deepface import DeepFace
+import requests
 
 # Initialize Picamera2
 picam = Picamera2()
@@ -23,6 +24,21 @@ gender_net = cv2.dnn.readNetFromCaffe('gender_deploy.prototxt', 'gender_net.caff
 age_net = cv2.dnn.readNetFromCaffe('age_deploy.prototxt', 'age_net.caffemodel')
 gender_list = ['male', 'female']
 age_list = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
+
+# Server details
+server_url = 'http://94.182.178.11/post/'
+headers = {
+    'accept': 'application/json',
+    'Content-Type': 'application/json',
+}
+
+def send_data_to_server(data):
+    try:
+        response = requests.post(server_url, headers=headers, json=data)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        print(f"Data sent successfully to server. Response: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error sending data to server: {e}")
 
 def detect_people():
     global people_data
@@ -75,21 +91,27 @@ def detect_people():
             people_data['emotions'][emotion] = people_data['emotions'].get(emotion, 0) + 1
             people_data['people'][person_id] = {'gender': gender, 'age': age, 'emotion': emotion}
 
-            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 255), 2)
-            cv2.putText(frame, f"{gender}, {age}, {emotion}", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-
         if time.time() - start_time >= 1:
-            print(json.dumps(people_data, indent=4))
-            start_time = time.time()
+            # Prepare data to send to server
+            timestamp = int(time.time())
+            data_to_send = {
+                'timestamp': timestamp,
+                'count': people_data['count'],
+                'genders': people_data['genders'],
+                'people': people_data['people']
+            }
+            
+            # Print JSON data for reference
+            print(json.dumps(data_to_send, indent=4))
 
-        cv2.imshow('Frame', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+            # Send data to server
+            send_data_to_server(data_to_send)
+
+            start_time = time.time()
 
         time.sleep(1)  # To maintain 1 FPS
 
     picam.stop()
-    cv2.destroyAllWindows()
 
 if __name__ == '__main__':
     detect_people()
